@@ -1,0 +1,50 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.3.0
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+
+  triton-server:
+    image: nvcr.io/nvidia/tritonserver:22.12-py3
+    command:
+      - tritonserver
+      - --model-repository=/models
+      - --strict-model-config=false
+      - --log-verbose=1
+    volumes:
+      - ./models:/models
+
+  producer:
+    build: .
+    command: ["python", "producer.py"]
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      INPUT_TOPIC: input_data
+      OUTPUT_TOPIC: output_data
+
+  consumer:
+    build: .
+    command: ["python", "consumer.py"]
+    depends_on:
+      - kafka
+      - triton-server
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      INPUT_TOPIC: input_data
+      OUTPUT_TOPIC: output_data
+      TRITON_URL: triton-server:8001
+      MODEL_NAME: codegen
